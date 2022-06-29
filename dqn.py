@@ -77,30 +77,31 @@ class DQN:
         else:
             action = random.randrange(self.n_actions)
         return action
-    def update(self):
+    def update(self, times = 1):
         if len(self.memory) < self.batch_size: # 当memory中不满足一个批量时，不更新策略
             return
         # 从经验回放中(replay memory)中随机采样一个批量的转移(transition)
         # print('updating')
         
-        state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.memory.sample(
-            self.batch_size)
-        state_batch = torch.tensor(np.array(state_batch), device=self.device, dtype=torch.float)
-        action_batch = torch.tensor(action_batch, device=self.device).unsqueeze(1)  
-        reward_batch = torch.tensor(reward_batch, device=self.device, dtype=torch.float)  
-        next_state_batch = torch.tensor(np.array(next_state_batch), device=self.device, dtype=torch.float)
-        done_batch = torch.tensor(np.float32(done_batch), device=self.device)
-        q_values = self.policy_net(state_batch).gather(dim=1, index=action_batch) # 计算当前状态(s_t,a)对应的Q(s_t, a)
-        next_q_values = self.target_net(next_state_batch).max(1)[0].detach() # 计算下一时刻的状态(s_t_,a)对应的Q值
-        # 计算期望的Q值，对于终止状态，此时done_batch[0]=1, 对应的expected_q_value等于reward
-        expected_q_values = reward_batch + self.gamma * next_q_values * (1-done_batch)
-        loss = nn.MSELoss()(q_values, expected_q_values.unsqueeze(1))  # 计算均方根损失
-        # 优化更新模型
-        self.optimizer.zero_grad()  
-        loss.backward()
-        for param in self.policy_net.parameters():  # clip防止梯度爆炸
-            param.grad.data.clamp_(-1, 1)
-        self.optimizer.step() 
+        for _ in range(times):
+            state_batch, action_batch, reward_batch, next_state_batch, done_batch = self.memory.sample(
+                self.batch_size)
+            state_batch = torch.tensor(np.array(state_batch), device=self.device, dtype=torch.float)
+            action_batch = torch.tensor(action_batch, device=self.device).unsqueeze(1)  
+            reward_batch = torch.tensor(reward_batch, device=self.device, dtype=torch.float)  
+            next_state_batch = torch.tensor(np.array(next_state_batch), device=self.device, dtype=torch.float)
+            done_batch = torch.tensor(np.float32(done_batch), device=self.device)
+            q_values = self.policy_net(state_batch).gather(dim=1, index=action_batch) # 计算当前状态(s_t,a)对应的Q(s_t, a)
+            next_q_values = self.target_net(next_state_batch).max(1)[0].detach() # 计算下一时刻的状态(s_t_,a)对应的Q值
+            # 计算期望的Q值，对于终止状态，此时done_batch[0]=1, 对应的expected_q_value等于reward
+            expected_q_values = reward_batch + self.gamma * next_q_values * (1-done_batch)
+            loss = nn.MSELoss()(q_values, expected_q_values.unsqueeze(1))  # 计算均方根损失
+            # 优化更新模型
+            self.optimizer.zero_grad()  
+            loss.backward()
+            for param in self.policy_net.parameters():  # clip防止梯度爆炸
+                param.grad.data.clamp_(-1, 1)
+            self.optimizer.step() 
 
     def save(self, path):
         torch.save(self.target_net.state_dict(), path+'dqn_checkpoint.pth')

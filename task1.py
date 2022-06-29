@@ -38,7 +38,7 @@ class DQNConfig:
         self.epsilon_end = 0.005  # e-greedy策略中的终止epsilon
         self.epsilon_decay = 500  # e-greedy策略中epsilon的衰减率
         self.lr = 0.0001  # 学习率
-        self.memory_capacity = 100000  # 经验回放的容量
+        self.memory_capacity = 12800  # 经验回放的容量
         self.batch_size = 128  # mini-batch SGD中的批量大小
         self.target_update = 4  # 目标网络的更新频率
         self.hidden_dim = 512  # 网络隐藏层
@@ -69,12 +69,14 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(n_states, hidden_dim)  # 输入层
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)  # 隐藏层
+        self.fc2_2 = nn.Linear(hidden_dim, hidden_dim)  # 隐藏层
         self.fc3 = nn.Linear(hidden_dim, n_actions)  # 输出层
 
     def forward(self, x):
         # 各层对应的激活函数
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
+        x = F.relu(self.fc2_2(x))
         return self.fc3(x)
 
 
@@ -89,6 +91,11 @@ def env_agent_config(cfg):
     agent = DQN(n_actions, model, cfg)  # 创建智能体
     return env, agent
 
+def init_action_count(agent):
+    action_count = {}
+    for i in range(agent.n_actions):
+        action_count[i] = 0
+    return action_count
 
 def train(cfg, env, agent):
     ''' 训练
@@ -102,18 +109,20 @@ def train(cfg, env, agent):
         state = env.reset()  # 重置环境，返回初始状态
         max_ep_try = cfg.batch_size * 10 # policy_net 的尝试次数
         ep_try = 0
+        action_count = init_action_count(agent)
         while ep_try <= max_ep_try:
             action = agent.choose_action(state)  # 选择动作
             next_state, reward, done, cur_money = env.step(action)  # 更新环境，返回transition
             agent.memory.push(state, action, reward,
                               next_state, done)  # 保存transition
             state = next_state  # 更新下一个状态
-            agent.update()  # 更新智能体
             ep_reward += reward  # 累加奖励
             # print(action,state,reward,cur_money)
             ep_try += 1
+            action_count[action] += 1
             if done:
                 break
+        agent.update(10*ep_try)  # 更新智能体
         if (i_ep+1) % cfg.target_update == 0:  # 智能体目标网络更新
             agent.target_net.load_state_dict(agent.policy_net.state_dict())
         rewards.append(ep_reward)
@@ -121,8 +130,12 @@ def train(cfg, env, agent):
             ma_rewards.append(0.9*ma_rewards[-1]+0.1*ep_reward)
         else:
             ma_rewards.append(ep_reward)
-        if (i_ep+1) % 10 == 0:
+        if (i_ep+1) % 1 == 0:
             print('回合：{}/{}, 奖励：{}, 剩余金钱：{}'.format(i_ep+1, cfg.train_eps, ep_reward, cur_money))
+        if (i_ep+1) % 10 == 0: 
+            print(f'回合: {i_ep+1}, 动作选择次数为{action_count}')
+            make_dir(plot_cfg.result_path, plot_cfg.model_path)
+            agent.save(path=plot_cfg.model_path)
     print('完成训练！')
     return rewards, ma_rewards
 
