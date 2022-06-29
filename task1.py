@@ -115,6 +115,7 @@ def train(cfg, env, agent):
             next_state, reward, done, cur_money = env.step(action)  # 更新环境，返回transition
             agent.memory.push(state, action, reward,
                               next_state, done)  # 保存transition
+            agent.update(10)  # 更新智能体
             state = next_state  # 更新下一个状态
             ep_reward += reward  # 累加奖励
             # print(action,state,reward,cur_money)
@@ -122,7 +123,7 @@ def train(cfg, env, agent):
             action_count[action] += 1
             if done:
                 break
-        agent.update(10*ep_try)  # 更新智能体
+        # agent.update(10*ep_try)  # 更新智能体
         if (i_ep+1) % cfg.target_update == 0:  # 智能体目标网络更新
             agent.target_net.load_state_dict(agent.policy_net.state_dict())
         rewards.append(ep_reward)
