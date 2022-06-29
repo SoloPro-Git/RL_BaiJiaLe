@@ -14,7 +14,7 @@ class BAIJIALE:
         # 初始化卡组 卡组数量为3
         self.money = money
         self.time_punish = False
-        self.deck_num = 3
+        self.deck_num = 1
         self.action_dict = {0: '不玩', 1: '庄', 2: '闲', 3: '和', 4: '对'}
         self.odds = {'不玩': 0, '庄': 1, '闲': 1, '和': 8, '对': 5.5}
         self.observation_space = 13 * 4
