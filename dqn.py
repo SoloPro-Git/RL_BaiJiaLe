@@ -1,14 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-'''
-@Author: John
-@Email: johnjim0816@gmail.com
-@Date: 2020-06-12 00:50:49
-@LastEditor: John
-LastEditTime: 2022-03-02 11:05:11
-@Discription: 
-@Environment: python 3.7.7
-'''
+
 '''off-policy
 '''
 

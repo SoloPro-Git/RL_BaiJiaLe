@@ -18,6 +18,7 @@ class BAIJIALE:
         self.action_dict = {0: '不玩', 1: '庄', 2: '闲', 3: '和', 4: '对'}
         self.odds = {'不玩': 0, '庄': 1, '闲': 1, '和': 8, '对': 5.5}
         self.observation_space = 13 * 4
+        self.sample_times = 100
 
     def init_deck(self) -> list:
         self.deck = []
@@ -44,10 +45,13 @@ class BAIJIALE:
         state = self.deck_list_2_training_state(self.deck)
         return state
 
-    def sample_deck(self):
+    def sample_deck(self,pop=True):
         card_a = self.deck.pop(randint(0, len(self.deck)-1))
         card_b = self.deck.pop(randint(0, len(self.deck)-1))
-        return [card_a, card_b]
+        if not pop:
+            self.deck.append(card_a)
+            self.deck.append(card_b)
+        return [card_a, card_b]     
 
     def get_score(self, card: list):
         card1, card2 = card[0], card[1]
@@ -95,10 +99,21 @@ class BAIJIALE:
             self.init_deck()
 
         done = False
+        if self.sample_times > 1:  # 在当前state下多次抽卡算reward的期望，这里进行有放回的抽卡
+            avg_reward = 0
+            for _ in range(self.sample_times-1):
+                banker_card = self.sample_deck(pop=False)
+                player_card = self.sample_deck(pop=False)
+                # next_state = self.deck_list_2_training_state(self.deck)
+                reward = self.get_reward(action, banker_card, player_card)
+                avg_reward += reward
+
+        #  正常抽卡需要把抽出的卡丢掉
         banker_card = self.sample_deck()
         player_card = self.sample_deck()
         next_state = self.deck_list_2_training_state(self.deck)
         reward = self.get_reward(action, banker_card, player_card)
+        if self.sample_times > 1: reward = (avg_reward + reward) / self.sample_times
 
         self.current_money += reward
         if self.current_money <= 0 or self.current_money >= 2 * self.money:
