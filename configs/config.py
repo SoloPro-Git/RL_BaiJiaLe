@@ -81,6 +81,10 @@ def get_agent_config(algo_name):
             'memory_capacity': 10000,
             'batch_size': 128,
             'target_update': 4,
+            # 预填充经验回放缓冲区配置
+            'prefill_experiences': True,  # 是否启用预填充
+            'prefill_size': 2000,  # 预填充经验数量
+            'prefill_protect_ratio': 0.3,  # 保护30%的预填充经验不被覆盖
         }
     elif algo_name.lower() == 'ppo':
         config = {
@@ -92,6 +96,9 @@ def get_agent_config(algo_name):
             'entropy_coef': 0.01,
             'max_grad_norm': 0.5,
             'update_epochs': 4,
+            # 预填充演示经验配置
+            'prefill_experiences': True,
+            'prefill_size': 1000,
         }
     elif algo_name.lower() == 'a2c':
         config = {
@@ -101,6 +108,9 @@ def get_agent_config(algo_name):
             'entropy_coef': 0.01,
             'max_grad_norm': 0.5,
             'n_steps': 5,
+            # 预填充演示经验配置
+            'prefill_experiences': True,
+            'prefill_size': 1000,
         }
     elif algo_name.lower() == 'reinforce':
         config = {
@@ -108,6 +118,9 @@ def get_agent_config(algo_name):
             'lr': 0.0003,
             'entropy_coef': 0.01,
             'max_grad_norm': 0.5,
+            # 预填充演示经验配置
+            'prefill_experiences': True,
+            'prefill_size': 1000,
         }
     else:
         raise ValueError(f"未知的算法名称: {algo_name}")

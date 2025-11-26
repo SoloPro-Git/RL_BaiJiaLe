@@ -16,7 +16,7 @@ from configs.config import get_config, get_agent_config, create_output_paths
 from utils import plot_rewards_cn, save_results, make_dir
 
 
-def create_agent(algo_name, state_dim, action_dim, device, agent_config):
+def create_agent(algo_name, state_dim, action_dim, device, agent_config, env=None):
     """
     创建Agent实例
     
@@ -26,18 +26,19 @@ def create_agent(algo_name, state_dim, action_dim, device, agent_config):
         action_dim: 动作维度
         device: 计算设备
         agent_config: Agent配置
+        env: 环境实例（用于预填充经验，所有算法都需要）
         
     Returns:
         agent: Agent实例
     """
     if algo_name.lower() == 'dqn':
-        agent = DQNAgent(state_dim, action_dim, device, agent_config)
+        agent = DQNAgent(state_dim, action_dim, device, agent_config, env=env)
     elif algo_name.lower() == 'ppo':
-        agent = PPOAgent(state_dim, action_dim, device, agent_config)
+        agent = PPOAgent(state_dim, action_dim, device, agent_config, env=env)
     elif algo_name.lower() == 'a2c':
-        agent = A2CAgent(state_dim, action_dim, device, agent_config)
+        agent = A2CAgent(state_dim, action_dim, device, agent_config, env=env)
     elif algo_name.lower() == 'reinforce':
-        agent = REINFORCEAgent(state_dim, action_dim, device, agent_config)
+        agent = REINFORCEAgent(state_dim, action_dim, device, agent_config, env=env)
     else:
         raise ValueError(f"未知的算法名称: {algo_name}")
     
@@ -87,8 +88,8 @@ def train(env, agent, config, algo_name):
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 
-                # 存储到经验回放
-                agent.memory.push(observation, action, reward, next_obs, terminated, truncated)
+                # 存储到经验回放（非保护经验）
+                agent.memory.push(observation, action, reward, next_obs, terminated, truncated, protected=False)
                 
                 # 更新Agent
                 agent.update(times=1)
@@ -235,8 +236,8 @@ def main():
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.n
     
-    # 创建Agent
-    agent = create_agent(args.algo, state_dim, action_dim, config['device'], agent_config)
+    # 创建Agent（所有算法都需要env用于预填充经验）
+    agent = create_agent(args.algo, state_dim, action_dim, config['device'], agent_config, env=env)
     
     # 创建输出路径
     result_path, model_path = create_output_paths(config['env_name'], args.algo)

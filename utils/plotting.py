@@ -94,3 +94,4 @@ def del_empty_dir(*paths):
         for dir in dirs:
             if not os.listdir(os.path.join(path, dir)):
                 os.removedirs(os.path.join(path, dir))
+

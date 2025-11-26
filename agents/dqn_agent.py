@@ -15,14 +15,23 @@ from agents.base_agent import BaseAgent
 
 
 class ReplayBuffer:
-    """经验回放缓冲区"""
+    """经验回放缓冲区，支持保护预填充经验"""
     
-    def __init__(self, capacity):
+    def __init__(self, capacity, protected_size=0):
+        """
+        初始化经验回放缓冲区
+        
+        Args:
+            capacity: 缓冲区容量
+            protected_size: 受保护的经验数量（预填充的经验不会被覆盖）
+        """
         self.capacity = capacity
+        self.protected_size = protected_size
         self.buffer = []
         self.position = 0
+        self.is_protected = []  # 标记哪些位置是受保护的
     
-    def push(self, state, action, reward, next_state, terminated, truncated):
+    def push(self, state, action, reward, next_state, terminated, truncated, protected=False):
         """
         存储转移样本
         
@@ -33,11 +42,31 @@ class ReplayBuffer:
             next_state: 下一状态
             terminated: 是否自然终止
             truncated: 是否被截断
+            protected: 是否为受保护的经验（预填充的经验）
         """
         done = terminated or truncated
+        
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
+            self.is_protected.append(False)
+        
+        # 如果当前位置是受保护的，且不是要添加受保护的经验，则跳过
+        if self.is_protected[self.position] and not protected:
+            # 找到下一个非保护位置
+            original_pos = self.position
+            self.position = (self.position + 1) % self.capacity
+            while self.is_protected[self.position] and self.position != original_pos:
+                self.position = (self.position + 1) % self.capacity
+            # 如果所有位置都被保护了，则覆盖最老的非保护经验
+            if self.is_protected[self.position]:
+                # 找到最老的非保护经验位置
+                for i in range(self.capacity):
+                    if not self.is_protected[i]:
+                        self.position = i
+                        break
+        
         self.buffer[self.position] = (state, action, reward, next_state, done)
+        self.is_protected[self.position] = protected
         self.position = (self.position + 1) % self.capacity
     
     def sample(self, batch_size):
@@ -55,7 +84,7 @@ class DQNAgent(BaseAgent):
     DQN Agent 实现
     """
     
-    def __init__(self, state_dim, action_dim, device='cpu', config=None):
+    def __init__(self, state_dim, action_dim, device='cpu', config=None, env=None):
         """
         初始化 DQN Agent
         
@@ -73,6 +102,9 @@ class DQNAgent(BaseAgent):
                 - batch_size: 批次大小 (default: 128)
                 - target_update: 目标网络更新频率 (default: 4)
                 - hidden_dims: 隐藏层维度列表 (default: [512, 512, 512])
+                - prefill_experiences: 是否预填充经验 (default: False)
+                - prefill_size: 预填充经验数量 (default: 2000)
+            env: 环境实例（用于生成预填充经验）
         """
         super().__init__(state_dim, action_dim, device)
         
@@ -88,6 +120,11 @@ class DQNAgent(BaseAgent):
         hidden_dims = config.get('hidden_dims', [512, 512, 512]) if config else [512, 512, 512]
         dropout = config.get('dropout', 0.1) if config else 0.1
         
+        # 预填充配置
+        prefill_experiences = config.get('prefill_experiences', False) if config else False
+        prefill_size = config.get('prefill_size', 2000) if config else 2000
+        prefill_protect_ratio = config.get('prefill_protect_ratio', 0.3) if config else 0.3  # 保护30%的预填充经验
+        
         # 导入网络结构
         from networks.mlp import MLP
         
@@ -102,12 +139,19 @@ class DQNAgent(BaseAgent):
         # 优化器
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
         
-        # 经验回放
-        self.memory = ReplayBuffer(self.memory_capacity)
+        # 经验回放（设置保护大小）
+        protected_size = int(prefill_size * prefill_protect_ratio) if prefill_experiences else 0
+        self.memory = ReplayBuffer(self.memory_capacity, protected_size=protected_size)
         
         # 训练计数器
         self.frame_idx = 0
         self.update_count = 0
+        
+        # 预填充经验回放缓冲区
+        if prefill_experiences and env is not None:
+            print(f"开始预填充 {prefill_size} 个专家经验到经验回放缓冲区...")
+            self._prefill_replay_buffer(env, prefill_size, prefill_protect_ratio)
+            print(f"预填充完成，当前缓冲区大小: {len(self.memory)}, 受保护经验: {protected_size}")
     
     def select_action(self, state, training=True):
         """
@@ -147,6 +191,29 @@ class DQNAgent(BaseAgent):
             self.policy_net.train()  # 恢复训练模式
         
         return action
+    
+    def _prefill_replay_buffer(self, env, n_experiences, protect_ratio=0.3):
+        """
+        预填充经验回放缓冲区
+        
+        Args:
+            env: 环境实例
+            n_experiences: 预填充经验数量
+            protect_ratio: 保护比例（部分经验会被标记为受保护，不会被覆盖）
+        """
+        from utils.experience_generator import generate_expert_experiences
+        
+        # 生成专家经验
+        experiences = generate_expert_experiences(env, n_experiences, n_simulations=500)
+        
+        # 计算需要保护的经验数量
+        n_protected = int(len(experiences) * protect_ratio)
+        
+        # 填充到经验回放缓冲区
+        # 前n_protected个经验标记为受保护
+        for i, (state, action, reward, next_state, terminated, truncated) in enumerate(experiences):
+            protected = (i < n_protected)
+            self.memory.push(state, action, reward, next_state, terminated, truncated, protected=protected)
     
     def update(self, times=1):
         """

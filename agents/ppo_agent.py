@@ -58,7 +58,7 @@ class PPOAgent(BaseAgent):
     PPO Agent 实现
     """
     
-    def __init__(self, state_dim, action_dim, device='cpu', config=None):
+    def __init__(self, state_dim, action_dim, device='cpu', config=None, env=None):
         """
         初始化 PPO Agent
         
@@ -76,6 +76,9 @@ class PPOAgent(BaseAgent):
                 - max_grad_norm: 梯度裁剪 (default: 0.5)
                 - update_epochs: 每次更新的epoch数 (default: 4)
                 - hidden_dims: 隐藏层维度列表 (default: [512, 512, 512])
+                - prefill_experiences: 是否预填充演示经验 (default: False)
+                - prefill_size: 预填充经验数量 (default: 1000)
+            env: 环境实例（用于生成预填充经验）
         """
         super().__init__(state_dim, action_dim, device)
         
@@ -100,6 +103,20 @@ class PPOAgent(BaseAgent):
         
         # 经验缓冲区
         self.buffer = PPOBuffer()
+        
+        # 预填充演示经验（用于初始策略学习）
+        prefill_experiences = config.get('prefill_experiences', False) if config else False
+        prefill_size = config.get('prefill_size', 1000) if config else 1000
+        
+        if prefill_experiences and env is not None:
+            print(f"开始为PPO加载 {prefill_size} 个演示经验...")
+            from utils.demonstration_buffer import DemonstrationBuffer
+            self.demonstration_buffer = DemonstrationBuffer(env, prefill_size)
+            # 使用演示经验进行初始策略学习
+            self._learn_from_demonstrations()
+            print("演示经验学习完成")
+        else:
+            self.demonstration_buffer = None
     
     def select_action(self, state, training=True):
         """
@@ -127,6 +144,48 @@ class PPOAgent(BaseAgent):
             result = action
         self.ac_network.train()  # 恢复训练模式
         return result
+    
+    def _learn_from_demonstrations(self, n_iterations=10):
+        """
+        从演示经验中学习初始策略
+        
+        Args:
+            n_iterations: 学习迭代次数
+        """
+        if self.demonstration_buffer is None or len(self.demonstration_buffer.demonstrations) == 0:
+            return
+        
+        demonstrations = self.demonstration_buffer.sample_demonstrations(100)  # 每次采样100个
+        
+        for _ in range(n_iterations):
+            if len(demonstrations) == 0:
+                break
+            
+            # 准备数据
+            states = np.array([d['state'] for d in demonstrations])
+            actions = np.array([d['action'] for d in demonstrations])
+            rewards = np.array([d['reward'] for d in demonstrations])
+            
+            states_tensor = torch.tensor(states, device=self.device, dtype=torch.float32)
+            actions_tensor = torch.tensor(actions, device=self.device, dtype=torch.long)
+            rewards_tensor = torch.tensor(rewards, device=self.device, dtype=torch.float32)
+            
+            # 前向传播
+            action_probs, values = self.ac_network(states_tensor)
+            dist = torch.distributions.Categorical(action_probs)
+            log_probs = dist.log_prob(actions_tensor)
+            entropy = dist.entropy().mean()
+            
+            # 计算损失（模仿学习：最大化演示动作的对数概率）
+            policy_loss = -log_probs.mean()  # 最大化演示动作的概率
+            value_loss = nn.MSELoss()(values.squeeze(), rewards_tensor)
+            loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
+            
+            # 更新
+            self.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.ac_network.parameters(), self.max_grad_norm)
+            self.optimizer.step()
     
     def compute_gae(self, rewards, values, dones, next_value=0):
         """
