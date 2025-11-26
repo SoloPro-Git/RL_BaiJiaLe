@@ -173,11 +173,14 @@ class PPOAgent(BaseAgent):
         states, actions, rewards, old_log_probs, values, dones = self.buffer.get_all()
         
         # 计算最后一个状态的价值
+        # 单样本推理时使用eval模式，避免BatchNorm报错
         last_state = states[-1]
         last_state_tensor = torch.tensor(last_state, device=self.device, dtype=torch.float32).unsqueeze(0)
+        self.ac_network.eval()
         with torch.no_grad():
             _, next_value = self.ac_network(last_state_tensor)
             next_value = next_value.item()
+        self.ac_network.train()  # 恢复训练模式
         
         # 计算GAE和returns
         advantages, returns = self.compute_gae(rewards, values, dones, next_value)
