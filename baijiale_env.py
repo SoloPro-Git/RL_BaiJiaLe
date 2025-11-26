@@ -1,23 +1,47 @@
 #! python
-from random import randint
-import re
+import numpy as np
+import gymnasium as gym
+from gymnasium import spaces
 
 
-class BAIJIALE:
+class BAIJIALE(gym.Env):
     """
     下注闲家而闲赢者，赢1赔1。
     下注和局（即最终点数一样者），赢1赔8。
     下注庄对子或闲对子（即庄或闲首两张牌为同数字或英文字母者），赢1赔5.5。
     """
 
-    def __init__(self, money) -> None:
+    def __init__(self, money, max_steps=1280) -> None:
+        """
+        初始化百家乐环境
+        
+        Args:
+            money: 初始金钱
+            max_steps: 最大步数限制，默认1280。设置为None表示无限制
+        """
+        super().__init__()
         # 初始化卡组 卡组数量为3
         self.money = money
+        self.max_steps = max_steps
         self.time_punish = False
-        self.deck_num = 1
+        self.deck_num = 3  # 3副牌
         self.action_dict = {0: '不玩', 1: '庄', 2: '闲', 3: '和', 4: '对'}
         self.odds = {'不玩': 0, '庄': 1, '闲': 1, '和': 8, '对': 5.5}
-        self.observation_space = 13 * 4
+        
+        # 定义观察空间：52张牌，每张牌的数量（0-3）
+        self.observation_space = spaces.Box(
+            low=0, 
+            high=3, 
+            shape=(52,), 
+            dtype=np.int32
+        )
+        
+        # 定义动作空间：5个动作（不玩、庄、闲、和、对）
+        self.action_space = spaces.Discrete(5)
+        
+        # 初始化随机数生成器
+        self.np_random = None
+        self.seed()
 
     def init_deck(self) -> list:
         self.deck = []
@@ -38,15 +62,37 @@ class BAIJIALE:
             state.append(card_number)
         return state
 
-    def reset(self) -> list:
+    def reset(self, seed=None, options=None):
+        """
+        重置环境
+        
+        Args:
+            seed: 随机种子
+            options: 可选参数
+            
+        Returns:
+            observation: 初始观察状态
+            info: 包含额外信息的字典
+        """
+        if seed is not None:
+            self.seed(seed)
+        
         self.init_deck()
         self.current_money = self.money
+        self.step_count = 0
         state = self.deck_list_2_training_state(self.deck)
-        return state
+        observation = np.array(state, dtype=np.int32)
+        
+        info = {
+            'current_money': self.current_money,
+            'step_count': self.step_count
+        }
+        
+        return observation, info
 
     def sample_deck(self):
-        card_a = self.deck.pop(randint(0, len(self.deck)-1))
-        card_b = self.deck.pop(randint(0, len(self.deck)-1))
+        card_a = self.deck.pop(self.np_random.integers(0, len(self.deck)))
+        card_b = self.deck.pop(self.np_random.integers(0, len(self.deck)))
         return [card_a, card_b]
 
     def get_score(self, card: list):
@@ -91,31 +137,87 @@ class BAIJIALE:
         return reward
 
     def step(self, action):
+        """
+        执行一步动作
+        
+        Args:
+            action: 动作（0-4）
+            
+        Returns:
+            observation: 新的观察状态
+            reward: 奖励值
+            terminated: 是否自然终止（钱输光或达到2倍初始金额）
+            truncated: 是否被截断（达到最大步数）
+            info: 包含额外信息的字典
+        """
         if len(self.deck) < 4:
             self.init_deck()
 
-        done = False
         banker_card = self.sample_deck()
         player_card = self.sample_deck()
         next_state = self.deck_list_2_training_state(self.deck)
         reward = self.get_reward(action, banker_card, player_card)
 
         self.current_money += reward
+        self.step_count += 1
+        
+        # 检查是否自然终止（钱输光或达到2倍初始金额）
+        terminated = False
         if self.current_money <= 0 or self.current_money >= 2 * self.money:
-            done = True
+            terminated = True
+        
+        # 检查是否达到最大步数限制
+        truncated = False
+        if self.max_steps is not None and self.step_count >= self.max_steps:
+            truncated = True
 
-        return next_state, reward, done, self.current_money
+        observation = np.array(next_state, dtype=np.int32)
+        info = {
+            'current_money': self.current_money,
+            'step_count': self.step_count,
+            'banker_card': banker_card,
+            'player_card': player_card
+        }
+
+        return observation, reward, terminated, truncated, info
+    
+    def seed(self, seed=None):
+        """
+        设置随机种子
+        
+        Args:
+            seed: 随机种子
+            
+        Returns:
+            seed: 返回使用的种子
+        """
+        self.np_random = np.random.default_rng(seed)
+        return [seed]
+    
+    def render(self):
+        """
+        渲染环境（可选实现）
+        """
+        print(f"当前金钱: {self.current_money}, 步数: {self.step_count}, 剩余牌数: {len(self.deck)}")
+    
+    def close(self):
+        """
+        清理资源（可选实现）
+        """
+        pass
 
 
 if __name__ == "__main__":
     money = 100
-    env = BAIJIALE(money)
-    MAX_STEPS = 10000
-    state = env.reset()
-    for i_step in range(MAX_STEPS):
-        action = 4
-        next_state, reward, done, cur_money = env.step(action)
-        print(i_step, reward, cur_money)
-        state = next_state
-        if done:
+    env = BAIJIALE(money, max_steps=1280)
+    observation, info = env.reset()
+    print(f"初始状态: 金钱={info['current_money']}, 步数={info['step_count']}")
+    
+    for i_step in range(10000):
+        action = 4  # 选择动作"对"
+        observation, reward, terminated, truncated, info = env.step(action)
+        print(f"步数 {i_step}: 奖励={reward}, 金钱={info['current_money']}, 步数计数={info['step_count']}")
+        
+        if terminated or truncated:
+            print(f"回合结束: terminated={terminated}, truncated={truncated}")
             break
