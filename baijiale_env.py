@@ -9,6 +9,10 @@ class BAIJIALE(gym.Env):
     下注闲家而闲赢者，赢1赔1。
     下注和局（即最终点数一样者），赢1赔8。
     下注庄对子或闲对子（即庄或闲首两张牌为同数字或英文字母者），赢1赔5.5。
+    
+    训练目标：
+    模型需要从剩余牌型中学习计算各投注方案的期望收益，
+    选择期望收益最大的投注方案，如果所有投注期望<=0则不投注。
     """
 
     def __init__(self, money, max_steps=1280) -> None:
@@ -120,6 +124,21 @@ class BAIJIALE(gym.Env):
         return card1 == card2
 
     def get_reward(self, action, banker_card, player_card):
+        """
+        计算奖励
+        
+        环境只给出奖励值，不提供任何概率信息。
+        模型需要从剩余牌型（状态）和奖励历史中学习计算各动作的期望收益。
+        
+        奖励规则：
+        - 投注庄/闲：猜对+1，猜错-1
+        - 投注和：猜对+8，猜错-1
+        - 投注对子：中+5.5，不中-1
+        - 不玩：0
+        
+        模型目标：从剩余牌型中学习预测各动作的期望收益，
+        选择期望收益最大的动作，如果所有投注期望<=0则不投注。
+        """
         action = self.action_dict[action]
         if action in ['庄', '闲', '和']:
             winner = self.compare_banker_player(banker_card, player_card)

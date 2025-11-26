@@ -89,12 +89,13 @@ class PPOAgent(BaseAgent):
         self.max_grad_norm = config.get('max_grad_norm', 0.5) if config else 0.5
         self.update_epochs = config.get('update_epochs', 4) if config else 4
         hidden_dims = config.get('hidden_dims', [512, 512, 512]) if config else [512, 512, 512]
+        dropout = config.get('dropout', 0.1) if config else 0.1
         
         # 导入网络结构
         from networks.mlp import ActorCritic
         
         # 创建Actor-Critic网络
-        self.ac_network = ActorCritic(state_dim, action_dim, hidden_dims).to(device)
+        self.ac_network = ActorCritic(state_dim, action_dim, hidden_dims, dropout).to(device)
         self.optimizer = optim.Adam(self.ac_network.parameters(), lr=self.lr)
         
         # 经验缓冲区

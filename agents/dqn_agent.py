@@ -86,13 +86,14 @@ class DQNAgent(BaseAgent):
         self.batch_size = config.get('batch_size', 128) if config else 128
         self.target_update = config.get('target_update', 4) if config else 4
         hidden_dims = config.get('hidden_dims', [512, 512, 512]) if config else [512, 512, 512]
+        dropout = config.get('dropout', 0.1) if config else 0.1
         
         # 导入网络结构
         from networks.mlp import MLP
         
         # 创建网络
-        self.policy_net = MLP(state_dim, action_dim, hidden_dims).to(device)
-        self.target_net = MLP(state_dim, action_dim, hidden_dims).to(device)
+        self.policy_net = MLP(state_dim, action_dim, hidden_dims, dropout).to(device)
+        self.target_net = MLP(state_dim, action_dim, hidden_dims, dropout).to(device)
         
         # 初始化目标网络
         self.target_net.load_state_dict(self.policy_net.state_dict())

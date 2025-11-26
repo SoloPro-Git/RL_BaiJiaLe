@@ -12,16 +12,20 @@ import torch.nn.functional as F
 class MLP(nn.Module):
     """
     通用的多层感知机，用于值函数估计（如DQN）
+    
+    注意：从52维剩余牌型状态学习计算各动作的期望收益是一个复杂的映射。
+    可能需要较深的网络才能很好地拟合这个函数。
     """
     
-    def __init__(self, n_states, n_actions, hidden_dims=[512, 512, 512]):
+    def __init__(self, n_states, n_actions, hidden_dims=[512, 512, 512], dropout=0.1):
         """
         初始化MLP网络
         
         Args:
-            n_states: 输入状态维度
-            n_actions: 输出动作维度
-            hidden_dims: 隐藏层维度列表
+            n_states: 输入状态维度（52维：每张牌的数量）
+            n_actions: 输出动作维度（5个动作）
+            hidden_dims: 隐藏层维度列表，可以调整网络深度和宽度
+            dropout: Dropout比率，用于防止过拟合
         """
         super(MLP, self).__init__()
         self.n_states = n_states
@@ -29,9 +33,12 @@ class MLP(nn.Module):
         
         layers = []
         input_dim = n_states
-        for hidden_dim in hidden_dims:
+        for i, hidden_dim in enumerate(hidden_dims):
             layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))  # 批归一化，有助于训练
             layers.append(nn.ReLU())
+            if dropout > 0 and i < len(hidden_dims) - 1:  # 最后一层不加dropout
+                layers.append(nn.Dropout(dropout))
             input_dim = hidden_dim
         layers.append(nn.Linear(input_dim, n_actions))
         
@@ -46,7 +53,7 @@ class ValueNetwork(nn.Module):
     价值网络，用于估计状态价值 V(s)
     """
     
-    def __init__(self, n_states, hidden_dims=[512, 512, 512]):
+    def __init__(self, n_states, hidden_dims=[512, 512, 512], dropout=0.1):
         """
         初始化价值网络
         
@@ -59,9 +66,12 @@ class ValueNetwork(nn.Module):
         
         layers = []
         input_dim = n_states
-        for hidden_dim in hidden_dims:
+        for i, hidden_dim in enumerate(hidden_dims):
             layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(nn.ReLU())
+            if dropout > 0 and i < len(hidden_dims) - 1:
+                layers.append(nn.Dropout(dropout))
             input_dim = hidden_dim
         layers.append(nn.Linear(input_dim, 1))
         
@@ -76,7 +86,7 @@ class PolicyNetwork(nn.Module):
     策略网络，用于输出动作概率分布 π(a|s)
     """
     
-    def __init__(self, n_states, n_actions, hidden_dims=[512, 512, 512]):
+    def __init__(self, n_states, n_actions, hidden_dims=[512, 512, 512], dropout=0.1):
         """
         初始化策略网络
         
@@ -127,7 +137,7 @@ class ActorCritic(nn.Module):
     Actor-Critic 网络，同时输出策略和价值
     """
     
-    def __init__(self, n_states, n_actions, hidden_dims=[512, 512, 512]):
+    def __init__(self, n_states, n_actions, hidden_dims=[512, 512, 512], dropout=0.1):
         """
         初始化Actor-Critic网络
         
@@ -143,9 +153,12 @@ class ActorCritic(nn.Module):
         # 共享的特征提取层
         layers = []
         input_dim = n_states
-        for hidden_dim in hidden_dims:
+        for i, hidden_dim in enumerate(hidden_dims):
             layers.append(nn.Linear(input_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(nn.ReLU())
+            if dropout > 0 and i < len(hidden_dims) - 1:
+                layers.append(nn.Dropout(dropout))
             input_dim = hidden_dim
         
         self.shared_layers = nn.Sequential(*layers)

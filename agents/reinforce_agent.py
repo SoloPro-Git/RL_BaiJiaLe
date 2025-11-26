@@ -77,12 +77,13 @@ class REINFORCEAgent(BaseAgent):
         self.entropy_coef = config.get('entropy_coef', 0.01) if config else 0.01
         self.max_grad_norm = config.get('max_grad_norm', 0.5) if config else 0.5
         hidden_dims = config.get('hidden_dims', [512, 512, 512]) if config else [512, 512, 512]
+        dropout = config.get('dropout', 0.1) if config else 0.1
         
         # 导入网络结构
         from networks.mlp import PolicyNetwork
         
         # 创建策略网络
-        self.policy_net = PolicyNetwork(state_dim, action_dim, hidden_dims).to(device)
+        self.policy_net = PolicyNetwork(state_dim, action_dim, hidden_dims, dropout).to(device)
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.lr)
         
         # 经验缓冲区
