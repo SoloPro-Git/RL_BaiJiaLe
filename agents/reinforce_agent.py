@@ -102,15 +102,19 @@ class REINFORCEAgent(BaseAgent):
         """
         state_tensor = torch.tensor(state, device=self.device, dtype=torch.float32).unsqueeze(0)
         
+        # 单样本推理时使用eval模式，避免BatchNorm报错
+        self.policy_net.eval()
         if training:
             with torch.no_grad():
                 action, log_prob = self.policy_net.get_action_and_log_prob(state_tensor)
-            return action.item(), log_prob.item()
+            result = action.item(), log_prob.item()
         else:
             with torch.no_grad():
                 action_probs = self.policy_net(state_tensor)
                 action = torch.multinomial(action_probs, 1).item()
-            return action
+            result = action
+        self.policy_net.train()  # 恢复训练模式
+        return result
     
     def compute_returns(self, rewards, dones):
         """
@@ -140,6 +144,9 @@ class REINFORCEAgent(BaseAgent):
         """
         if len(self.buffer.states) == 0:
             return
+        
+        # 确保在训练模式下更新（BatchNorm需要batch统计）
+        self.policy_net.train()
         
         # 获取所有数据
         states, actions, rewards, log_probs, dones = self.buffer.get_all()

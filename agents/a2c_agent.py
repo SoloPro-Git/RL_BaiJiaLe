@@ -110,15 +110,19 @@ class A2CAgent(BaseAgent):
         """
         state_tensor = torch.tensor(state, device=self.device, dtype=torch.float32).unsqueeze(0)
         
+        # 单样本推理时使用eval模式，避免BatchNorm报错
+        self.ac_network.eval()
         if training:
             with torch.no_grad():
                 action, log_prob, value = self.ac_network.get_action_and_value(state_tensor)
-            return action.item(), log_prob.item(), value.item()
+            result = action.item(), log_prob.item(), value.item()
         else:
             with torch.no_grad():
                 action_probs, value = self.ac_network(state_tensor)
                 action = torch.multinomial(action_probs, 1).item()
-            return action
+            result = action
+        self.ac_network.train()  # 恢复训练模式
+        return result
     
     def compute_returns(self, rewards, values, dones, next_value=0):
         """
@@ -158,6 +162,9 @@ class A2CAgent(BaseAgent):
         """
         if len(self.buffer.states) == 0:
             return
+        
+        # 确保在训练模式下更新（BatchNorm需要batch统计）
+        self.ac_network.train()
         
         # 获取所有数据
         states, actions, rewards, old_log_probs, values, dones = self.buffer.get_all()

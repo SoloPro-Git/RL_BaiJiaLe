@@ -127,19 +127,24 @@ class DQNAgent(BaseAgent):
             
             if random.random() > epsilon:
                 # 利用：选择Q值最大的动作
+                # 单样本推理时使用eval模式，避免BatchNorm报错
+                self.policy_net.eval()
                 with torch.no_grad():
                     state_tensor = torch.tensor(state, device=self.device, dtype=torch.float32).unsqueeze(0)
                     q_values = self.policy_net(state_tensor)
                     action = q_values.max(1)[1].item()
+                self.policy_net.train()  # 恢复训练模式
             else:
                 # 探索：随机选择动作
                 action = random.randrange(self.action_dim)
         else:
             # 评估模式：直接选择最优动作
+            self.policy_net.eval()
             with torch.no_grad():
                 state_tensor = torch.tensor(state, device=self.device, dtype=torch.float32).unsqueeze(0)
                 q_values = self.policy_net(state_tensor)
                 action = q_values.max(1)[1].item()
+            self.policy_net.train()  # 恢复训练模式
         
         return action
     
